@@ -4,105 +4,76 @@
 
 **Author:** Venkata Siddharth Pendyala  
 **Email:** [venkatasiddharthpendyala@outlook.com](mailto:venkatasiddharthpendyala@outlook.com)  
-**License:** MIT  
+**License:** MIT
 
 ---
 
 ## Overview
 
-**Apside** is a precision-grade Python package for converting between **Gregorian calendar dates** and **Julian Dates (JD)**.  
-It implements the canonical astronomical algorithms described in *Jean Meeus, “Astronomical Algorithms,” 2nd Edition (1998), Chapters 7.1–7.3*,  
-with microsecond-level accuracy and correct handling of the **Gregorian reform of 1582-10-15**.
+**Apside** provides exact, arbitrarily precise conversions between **Gregorian calendar datetimes** and **Julian Dates (JD)**.  
+This implementation upgrades the classic approach by using:
 
-The name *Apside* derives from *apsis* — a point of greatest or least distance of a celestial body in its orbit —  
-reflecting the package’s purpose of anchoring time precisely within astronomical computations.
+- **Exact integer Julian Day Number (JDN)** via the Fliegel–Van Flandern algorithm (no 365.25 or 30.6001 approximations).  
+- **Arbitrary-precision fractional days** with `decimal.Decimal` (configurable precision).  
+- **Nanosecond-level time components** with rollover-safe normalization.
 
----
-
-## Definition
-
-A **Julian Date (JD)** is a continuous count of days since **4713 BCE January 1, 12:00 UTC (Julian calendar)**.  
-It increases by exactly one unit per day, and its fractional component represents the time of day as a fraction of 24 hours.  
-The Julian Date system is widely used in astronomy, astrophysics, and spacecraft navigation for time-based computations.
+The result is strictly reversible JD↔Gregorian conversion with precision limited only by the `Decimal` context.
 
 ---
 
-## Conversion Summary
+## What’s New vs. Typical Implementations
 
-### Gregorian → Julian
+- Exact integer calendar arithmetic for the date part (no floating-point floors).  
+- `Decimal` fractional day with configurable precision (e.g., 50–100 significant digits).  
+- Support for **nanoseconds** in both directions.  
+- Correct automatic handling of the **1582-10-15** Gregorian reform boundary.
 
-The algorithm calculates the Julian Date corresponding to any Gregorian date and time.  
-It accounts for the Gregorian calendar reform, leap-year cycles, and fractional-day precision derived from hour, minute, second, and microsecond components.
-
-### Julian → Gregorian
-
-The inverse process reconstructs the Gregorian date and time from a given Julian Date,  
-recovering the exact year, month, day, hour, minute, second, and microsecond in UTC.
-
-Both transformations are numerically stable and reversible within a precision margin of 10⁻⁶ days.
+> Note: This module operates on civil time (UTC). For timescale conversions (UTC↔TAI↔TT↔TDB), leap seconds, ΔT, and relativistic corrections, integrate IERS/JPL data or use a companion timescale module.
 
 ---
 
-## Accuracy and Validation
+## Installation
 
-- **Precision:** approximately 10⁻⁶ days (≈ 0.086 seconds)  
-- **Validation:** verified against the **U.S. Naval Observatory** and **NASA JPL Horizons** reference data  
-- **Gregorian Transition:** automatically applied at JD = 2299160.5 (1582-10-15)  
-- **Complexity:** O(1) deterministic computation  
-- **Rollover Handling:** normalizes microseconds, seconds, minutes, and hours across day boundaries  
-
-| Test Case            | Gregorian Date (UTC) | Reference JD | Computed JD | ΔJD (days) |
-|----------------------|----------------------|--------------|-------------|-------------|
-| J2000.0 epoch        | 2000-01-01 12:00     | 2451545.0    | 2451545.0   | 0.0         |
-| Modern date          | 2025-10-04 00:00     | 2460671.5    | 2460671.5   | 0.0         |
-| Gregorian switchover | 1582-10-15 00:00     | 2299160.5    | 2299160.5   | 0.0         |
-
-Observed deviation: less than one microsecond of error across all tested epochs.
+Copy `apside.py` into your project, or package it as desired. No external dependencies.
 
 ---
 
-## Implementation Details
+## API
 
-- **Language:** Python ≥ 3.8  
-- **Dependencies:** None (uses only `datetime` and `math` from the standard library)  
-- **Precision Domain:** UTC-based floating-point arithmetic  
-- **Performance:** Constant-time algorithm (O(1))  
-- **Numerical Robustness:** Maintains microsecond rollover normalization near day boundaries  
+### `gregToJulian(y, m, d, hour=0, minute=0, second=0, microsecond=0, nanosecond=0) -> Decimal`
+Exact civil datetime → **JD** (as `Decimal`).  
+- Calendar boundary: automatically selects Julian vs. Gregorian with the historical switchover at 1582-10-15.  
+- Fractional day is computed from hour:minute:second:microsecond:nanosecond using `Decimal`.  
+- JD is referenced to the standard astronomical convention (noon origin handled internally).
 
----
-
-## API Reference
-
-### `gregToJulian(y, m, d, hour=0, minute=0, second=0, microsecond=0) -> float`
-Converts a Gregorian date and time to a **Julian Date (JD)**.  
-Returns a floating-point value including the fractional day.
-
-### `jdDatetime(dt: datetime) -> float`
-Converts a Python `datetime` object to its corresponding **Julian Date**.  
-Naive datetimes are assumed local and converted to UTC; timezone-aware datetimes are handled directly.
-
-### `jdToGreg(jd: float) -> tuple`
-Converts a **Julian Date** back to Gregorian date and time (UTC).  
-Returns `(year, month, day, hour, minute, second, microsecond)`.
+### `jdToGreg(jd: Decimal) -> tuple[int, int, int, int, int, int, int, int]`
+**JD** (`Decimal`) → `(year, month, day, hour, minute, second, microsecond, nanosecond)` in UTC.  
+- Uses only integer calendar arithmetic for the date.  
+- Fractional day is expanded to time with rollover normalization.
 
 ---
 
-## Example Usage
+## Precision
+
+- Default `Decimal` precision in this file is set to **50 significant digits** (`getcontext().prec = 50`).  
+- Increase the precision for sub-nanosecond JD resolution (e.g., 80–100) depending on your needs.  
+- Reversibility: JD→Gregorian→JD round-trips within the configured decimal precision.
+
+---
+
+## Example
 
 ```python
-from datetime import datetime, timezone
-from apside import gregToJulian, jdDatetime, jdToGreg
+from decimal import getcontext
+from apside import gregToJulian, jdToGreg
 
-# Gregorian → Julian
-jd = gregToJulian(2025, 10, 4, 12, 30)
-print(jd)
-# 2460672.02083
+# Increase precision if needed
+getcontext().prec = 80
 
-# datetime → Julian
-dt = datetime(2025, 10, 4, 12, 30, tzinfo=timezone.utc)
-print(jdDatetime(dt))
-# 2460672.02083
+# Gregorian → JD (with nanoseconds)
+jd = gregToJulian(2025, 10, 4, 12, 30, 0, microsecond=123456, nanosecond=789)
+print(jd)  # Decimal JD with ~80-digit precision
 
-# Julian → Gregorian
-print(jdToGreg(2460672.02083))
-# (2025, 10, 4, 12, 30, 0, 0)
+# JD → Gregorian (reversible, with nanos)
+print(jdToGreg(jd))
+# (2025, 10, 4, 12, 30, 0, 123456, 789)
